@@ -21,20 +21,25 @@
 <p class="muted small">CSV includes one row per team. The <code>responses</code> column contains JSON so multiple question responses stay in a single cell.</p></div>
 </section><footer class="footer">THE LOST TIMELINE · Results are read from Firestore through the Cloud Functions API. Do not share this dashboard publicly until proper admin authentication is enabled.</footer>
 </main>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js"></script>
+
 <script>
-// Replace these values with the Web App config from Firebase Console > Project settings > Your apps.
-// Keep the config public; never put service-account keys or private credentials in this file.
-const firebaseConfig = {
-  apiKey: "AIzaSyBZLvLIf85UyJxdimoyz7FDtZjvI4ws0bY",
-  authDomain: "chrono-explorers-round1.firebaseapp.com",
-  projectId: "chrono-explorers-round1",
-  appId: "1:837627386886:web:c0f54db357a4efde9cb787"
-};
-const REGION = "asia-south1";
-let functionsApi = null, currentTeams = [], adminSession = false;
+const API_BASE_URL = "https://chrono-explorers-round1-backend.onrender.com";
+let currentTeams = [], adminSession = false;
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function apiRequest(endpoint, data = {}) {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.success === false) {
+    throw new Error(result.message || `Request failed (${response.status})`);
+  }
+  return result;
+}
 function timestamp(value){if(!value)return null;if(typeof value.toDate==="function")return value.toDate();if(value.seconds)return new Date(value.seconds*1000);const d=new Date(value);return Number.isNaN(d.getTime())?null:d}
 function fmt(value){const d=timestamp(value);return d?d.toLocaleString():"—"}
 function millis(value){const d=timestamp(value);return d?d.getTime():null}
@@ -47,8 +52,52 @@ function completionSeconds(team){if(!isComplete(team))return "";const start=mill
 function normalizeTeam(t){return {...t, submissions:(t.submissions||[]).map(s=>({...s,submittedAt:s.submittedAt||s.submitted_at}))}}
 function showMessage(el,msg,kind=""){el.className="notice "+kind;el.textContent=msg}
 function initFirebase(){if(firebaseConfig.apiKey.startsWith("REPLACE_")||firebaseConfig.appId.startsWith("REPLACE_"))throw new Error("Add your Firebase Web App apiKey and appId in admin.html before using the dashboard.");if(!firebase.apps.length)firebase.initializeApp(firebaseConfig);functionsApi=firebase.app().functions(REGION)}
-$("loginForm").addEventListener("submit",async e=>{e.preventDefault();const teamId=$("teamId").value.trim(),teamName=$("teamName").value.trim();if(teamId.toLowerCase()!=="admin"||teamName.toLowerCase()!=="admin"){showMessage($("loginMessage"),"Access denied. Enter admin for both Team ID and Team Name.","error");return}try{initFirebase();$("loginBtn").disabled=true;$("loginBtn").textContent="Connecting…";const result=await functionsApi.httpsCallable("getAdminResults")({teamId,teamName});if(!result.data?.success)throw new Error("The backend did not confirm admin access.");adminSession=true;$("loginPanel").classList.add("hidden");$("dashboard").classList.remove("hidden");$("refreshBtn").classList.remove("hidden");$("logoutBtn").classList.remove("hidden");await loadResults(result.data.teams||[])}catch(err){showMessage($("loginMessage"),`${err.message||"Unable to connect."} Check Firebase config, deployment, and network.`, "error")}finally{$("loginBtn").disabled=false;$("loginBtn").textContent="Enter control room →"}});
-async function loadResults(prefetched){try{showMessage($("dataMessage"),"Syncing with Firestore…");let teams=prefetched;if(!teams){const result=await functionsApi.httpsCallable("getAdminResults")({teamId:"admin",teamName:"admin"});teams=result.data.teams||[]}currentTeams=teams.map(normalizeTeam);render();showMessage($("dataMessage"),`Loaded ${currentTeams.length} team record(s) from the backend.`, "success")}catch(err){showMessage($("dataMessage"),`Could not load results: ${err.message||err}`,"error")}}
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const teamId = $("teamId").value.trim();
+  const teamName = $("teamName").value.trim();
+
+  if (teamId.toLowerCase() !== "admin" || teamName.toLowerCase() !== "admin") {
+    showMessage($("loginMessage"), "Access denied. Enter admin for both Team ID and Team Name.", "error");
+    return;
+  }
+
+  try {
+    $("loginBtn").disabled = true;
+    $("loginBtn").textContent = "Connecting…";
+    const result = await apiRequest("/getAdminResults", { teamId, teamName });
+    adminSession = true;
+    $("loginPanel").classList.add("hidden");
+    $("dashboard").classList.remove("hidden");
+    $("refreshBtn").classList.remove("hidden");
+    $("logoutBtn").classList.remove("hidden");
+    await loadResults(result.teams || []);
+  } catch (err) {
+    showMessage($("loginMessage"), `${err.message || "Unable to connect."} Check the Render backend URL and network.`, "error");
+  } finally {
+    $("loginBtn").disabled = false;
+    $("loginBtn").textContent = "Enter control room →";
+  }
+});
+
+async function loadResults(prefetched) {
+  try {
+    showMessage($("dataMessage"), "Syncing with backend…");
+    let teams = prefetched;
+    if (!teams) {
+      const result = await apiRequest("/getAdminResults", {
+        teamId: "admin",
+        teamName: "admin"
+      });
+      teams = result.teams || [];
+    }
+    currentTeams = teams.map(normalizeTeam);
+    render();
+    showMessage($("dataMessage"), `Loaded ${currentTeams.length} team record(s) from the backend.`, "success");
+  } catch (err) {
+    showMessage($("dataMessage"), `Could not load results: ${err.message || err}`, "error");
+  }
+}
 $("refreshBtn").addEventListener("click",()=>loadResults());$("logoutBtn").addEventListener("click",()=>{adminSession=false;currentTeams=[];$("dashboard").classList.add("hidden");$("loginPanel").classList.remove("hidden");$("refreshBtn").classList.add("hidden");$("logoutBtn").classList.add("hidden");$("teamId").value="admin";$("teamName").value="admin";showMessage($("loginMessage"),"You have logged out.")});
 ["search","statusFilter","sortFilter"].forEach(id=>$(id).addEventListener(id==="search"?"input":"change",render));
 function render(){if(!adminSession)return;const query=$("search").value.toLowerCase().trim(),status=$("statusFilter").value,sort=$("sortFilter").value;let teams=currentTeams.filter(t=>`${t.teamId} ${t.teamName}`.toLowerCase().includes(query));teams=teams.filter(t=>status==="all"||(status==="submitted"&&(t.submissions||[]).length>0)||(status==="pending"&&(t.submissions||[]).length===0)||(status==="complete"&&isComplete(t)));teams.sort((a,b)=>sort==="points"?(b.totalPoints||0)-(a.totalPoints||0):sort==="recent"?(latestSubmission(b)||0)-(latestSubmission(a)||0):String(a.teamName||"").localeCompare(String(b.teamName||"")));$("teamCount").textContent=currentTeams.length;$("submittedCount").textContent=currentTeams.filter(t=>(t.submissions||[]).length>0).length;$("answerCount").textContent=currentTeams.reduce((n,t)=>n+(t.submissions||[]).length,0);$("teamRows").innerHTML=teams.map(t=>`<tr><td><b>${esc(t.teamName)}</b><br><span class="pill">${esc(t.teamId)}</span><div class="muted small">Round: ${esc(t.roundId||"round1")}</div></td><td><div class="details">${esc(assignedList(t))}</div></td><td><div class="details">${esc(responseList(t))}</div></td><td><b>${Number(t.totalPoints||0)}</b></td><td><div class="small">Login: ${esc(fmt(t.loginAt))}</div><div class="small">Logout: ${esc(fmt(t.logoutAt))}</div></td><td>${isComplete(t)?'<span class="pill ok">Complete</span>':'<span class="pill no">In progress</span>'}<div class="small muted">${completionSeconds(t)===""?"Time: —":`Time: ${completionSeconds(t)} sec`}</div><div class="small muted">Last: ${esc(fmt(latestSubmission(t)))}</div></td></tr>`).join("")||'<tr><td colspan="6" class="muted">No teams match this filter.</td></tr>'}
