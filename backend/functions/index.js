@@ -1,24 +1,33 @@
+const express = require("express");
+const cors = require("cors");
+const admin = require("firebase-admin");
 
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { setGlobalOptions } = require("firebase-functions");
-const { initializeApp } = require("firebase-admin/app");
-const {
-  getFirestore,
-  FieldValue
-} = require("firebase-admin/firestore");
+const app = express();
 
-initializeApp();
+app.use(cors());
+app.use(express.json());
 
-const db = getFirestore();
+// Firebase credentials
+const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
+  ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+  : require("./serviceaccount.json");
 
-setGlobalOptions({
-  maxInstances: 10,
-  region: "asia-south1"
-});
+// Initialize Firebase only once
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+}
 
-// Round 1 configuration
+const db = admin.firestore();
+const FieldValue = admin.firestore.FieldValue;
+
+const PORT = process.env.PORT || 3000;
 const ROUND_ID = "round1";
 
+// --------------------------------------------------
+// QUESTIONS
+// --------------------------------------------------
 
 const QUESTIONS = [
   {
@@ -113,349 +122,480 @@ const QUESTIONS = [
   }
 ];
 
+// --------------------------------------------------
+// ERROR HANDLING
+// --------------------------------------------------
 
-// 3 random questions
-exports.registerTeam = onCall(async (request) => {
-  const { teamId, teamName } = request.data || {};
-
-  if (
-    typeof teamId !== "string" ||
-    typeof teamName !== "string" ||
-    !teamId.trim() ||
-    !teamName.trim()
-  ) {
-    throw new HttpsError(
-      "invalid-argument",
-      "Team ID and Team Name are required."
-    );
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
   }
+}
 
-   
-const cleanTeamId = teamId.trim();
-const cleanTeamName = teamName.trim();
-
-// Admin login
-if (
-  cleanTeamId.toLowerCase() === "admin" &&
-  cleanTeamName.toLowerCase() === "admin"
-) {
-  return {
-    success: true,
-    isAdmin: true,
-    teamId: "admin",
-    teamName: "admin",
-    assignedQuestions: []
+function asyncRoute(handler) {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
   };
 }
 
-// Reserve admin ID
-if (cleanTeamId.toLowerCase() === "admin") {
-  throw new HttpsError(
-    "invalid-argument",
-    "Invalid Team ID or Team Name."
-  );
+// --------------------------------------------------
+// HELPER FUNCTIONS
+// --------------------------------------------------
+
+function normalizeAnswer(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
 }
 
-const teamRef = db.collection("teams").doc(cleanTeamId);
+function publicQuestion(question) {
+  return {
+    id: question.id,
+    image: question.image,
+    points: question.points
+  };
+}
 
+// --------------------------------------------------
+// HOME / HEALTH CHECK
+// --------------------------------------------------
 
-  const result = await db.runTransaction(async (transaction) => {
-    const existingTeam = await transaction.get(teamRef);
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "Chrono Explorers Round 1 backend is running."
+  });
+});
 
-    if (existingTeam.exists) {
-      const teamData = existingTeam.data();
+// --------------------------------------------------
+// REGISTER TEAM
+// Assign three random questions to each team
+// --------------------------------------------------
 
-      if (teamData.teamName !== cleanTeamName) {
-        throw new HttpsError(
-          "already-exists",
-          "This Team ID belongs to another team."
-        );
-      }
+app.post(
+  "/registerTeam",
+  asyncRoute(async (req, res) => {
+    const { teamId, teamName } = req.body || {};
 
-      transaction.update(teamRef, {
-        loginAt: FieldValue.serverTimestamp(),
-        logoutAt: null
+    // Validate input
+    if (
+      typeof teamId !== "string" ||
+      typeof teamName !== "string" ||
+      !teamId.trim() ||
+      !teamName.trim()
+    ) {
+      throw new HttpError(
+        400,
+        "Team ID and Team Name are required."
+      );
+    }
+
+    const cleanTeamId = teamId.trim();
+    const cleanTeamName = teamName.trim();
+
+    // Admin login
+    if (
+      cleanTeamId.toLowerCase() === "admin" &&
+      cleanTeamName.toLowerCase() === "admin"
+    ) {
+      return res.json({
+        success: true,
+        isAdmin: true,
+        teamId: "admin",
+        teamName: "admin",
+        assignedQuestions: []
       });
-
-      return {
-        teamId: teamData.teamId,
-        teamName: teamData.teamName,
-        assignedQuestions: teamData.assignedQuestions
-      };
     }
 
-    // Shuffle questions using Fisher-Yates
-    const shuffled = [...QUESTIONS];
-
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-
-      [shuffled[i], shuffled[j]] =
-        [shuffled[j], shuffled[i]];
+    // Reserve admin ID
+    if (cleanTeamId.toLowerCase() === "admin") {
+      throw new HttpError(
+        400,
+        "Invalid Team ID or Team Name."
+      );
     }
 
-    const assignedQuestions = shuffled.slice(0, 3);
+    const teamRef = db
+      .collection("teams")
+      .doc(cleanTeamId);
 
-    transaction.set(teamRef, {
-      teamId: cleanTeamId,
-      teamName: cleanTeamName,
-      roundId: ROUND_ID,
-      assignedQuestions,
-      totalPoints: 0,
-      registeredAt: FieldValue.serverTimestamp(),
-      loginAt: FieldValue.serverTimestamp(),
-      logoutAt: null
+    // Register team using transaction
+    const result = await db.runTransaction(
+      async (transaction) => {
+        const existingTeam = await transaction.get(teamRef);
+
+        // Existing team login
+        if (existingTeam.exists) {
+          const teamData = existingTeam.data();
+
+          if (teamData.teamName !== cleanTeamName) {
+            throw new HttpError(
+              409,
+              "This Team ID belongs to another team."
+            );
+          }
+
+          transaction.update(teamRef, {
+            loginAt: FieldValue.serverTimestamp(),
+            logoutAt: null
+          });
+
+          return {
+            teamId: teamData.teamId,
+            teamName: teamData.teamName,
+            assignedQuestions:
+              teamData.assignedQuestions || []
+          };
+        }
+
+        // Shuffle questions
+        const shuffled = [...QUESTIONS];
+
+        for (
+          let i = shuffled.length - 1;
+          i > 0;
+          i--
+        ) {
+          const j = Math.floor(
+            Math.random() * (i + 1)
+          );
+
+          [shuffled[i], shuffled[j]] = [
+            shuffled[j],
+            shuffled[i]
+          ];
+        }
+
+        // Assign three questions
+        const assignedQuestions = shuffled.slice(0, 3);
+
+        // Save team
+        transaction.set(teamRef, {
+          teamId: cleanTeamId,
+          teamName: cleanTeamName,
+          roundId: ROUND_ID,
+          assignedQuestions,
+          totalPoints: 0,
+          registeredAt: FieldValue.serverTimestamp(),
+          loginAt: FieldValue.serverTimestamp(),
+          logoutAt: null
+        });
+
+        return {
+          teamId: cleanTeamId,
+          teamName: cleanTeamName,
+          assignedQuestions
+        };
+      }
+    );
+
+    // Do not send answers to the frontend
+    const publicQuestions =
+      result.assignedQuestions.map(publicQuestion);
+
+    return res.json({
+      success: true,
+      teamId: result.teamId,
+      teamName: result.teamName,
+      assignedQuestions: publicQuestions
     });
+  })
+);
 
-    return {
-      teamId: cleanTeamId,
-      teamName: cleanTeamName,
-      assignedQuestions
-    };
-  });
+// --------------------------------------------------
+// LOGOUT TEAM
+// --------------------------------------------------
 
-  // Never send correct answers to the participant website
-  const publicQuestions = result.assignedQuestions.map(
-    (question) => ({
-      id: question.id,
-      image: question.image,
-      points: question.points
-    })
-  );
+app.post(
+  "/logoutTeam",
+  asyncRoute(async (req, res) => {
+    const { teamId } = req.body || {};
 
-  return {
-    success: true,
-    teamId: result.teamId,
-    teamName: result.teamName,
-    assignedQuestions: publicQuestions
-  };
-});
+    if (
+      typeof teamId !== "string" ||
+      !teamId.trim()
+    ) {
+      throw new HttpError(
+        400,
+        "Team ID is required."
+      );
+    }
 
+    const cleanTeamId = teamId.trim();
 
-// Record team logout
-exports.logoutTeam = onCall(async (request) => {
-  const { teamId } = request.data;
+    const teamRef = db
+      .collection("teams")
+      .doc(cleanTeamId);
 
-  if (!teamId) {
-    throw new HttpsError(
-      "invalid-argument",
-      "Team ID is required."
-    );
-  }
+    const team = await teamRef.get();
 
-  const teamRef = db.collection("teams").doc(teamId);
-
-  const team = await teamRef.get();
-
-  if (!team.exists) {
-    throw new HttpsError(
-      "not-found",
-      "Team does not exist."
-    );
-  }
-
-  await teamRef.update({
-    logoutAt: FieldValue.serverTimestamp()
-  });
-
-  return {
-    success: true
-  };
-});
-
-
- // Submit an answer and award points
-exports.submitAnswer = onCall(async (request) => {
-  const { teamId, questionId, answer } = request.data || {};
-
-  if (
-    typeof teamId !== "string" ||
-    typeof questionId !== "string" ||
-    typeof answer !== "string" ||
-    !teamId.trim() ||
-    !questionId.trim() ||
-    !answer.trim()
-  ) {
-    throw new HttpsError(
-      "invalid-argument",
-      "Team ID, Question ID and answer are required."
-    );
-  }
-
-  const cleanTeamId = teamId.trim();
-  const cleanQuestionId = questionId.trim();
-
-  // Find the correct question on the server
-  const question = QUESTIONS.find(
-    (q) => q.id === cleanQuestionId
-  );
-
-  if (!question) {
-    throw new HttpsError(
-      "not-found",
-      "Question does not exist."
-    );
-  }
-
-  // Normalize answers for comparison
-  const normalizeAnswer = (value) =>
-    value
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "");
-
-  const isCorrect =
-    normalizeAnswer(answer) ===
-    normalizeAnswer(question.answer);
-
-  const pointsAwarded = isCorrect
-    ? question.points
-    : 0;
-
-  const teamRef = db.collection("teams").doc(cleanTeamId);
-
-  const submissionRef = db
-    .collection("submissions")
-    .doc(`${cleanTeamId}_${cleanQuestionId}`);
-
-  const result = await db.runTransaction(async (transaction) => {
-
-    const teamSnapshot = await transaction.get(teamRef);
-
-    if (!teamSnapshot.exists) {
-      throw new HttpsError(
-        "not-found",
+    if (!team.exists) {
+      throw new HttpError(
+        404,
         "Team does not exist."
       );
     }
 
-    const teamData = teamSnapshot.data();
+    await teamRef.update({
+      logoutAt: FieldValue.serverTimestamp()
+    });
 
-    // Check that this question was assigned to the team
-    const assignedQuestion =
-      teamData.assignedQuestions.find(
-        (q) => q.id === cleanQuestionId
-      );
+    return res.json({
+      success: true
+    });
+  })
+);
 
-    if (!assignedQuestion) {
-      throw new HttpsError(
-        "permission-denied",
-        "This question was not assigned to your team."
+// --------------------------------------------------
+// SUBMIT ANSWER
+// --------------------------------------------------
+
+app.post(
+  "/submitAnswer",
+  asyncRoute(async (req, res) => {
+    const {
+      teamId,
+      questionId,
+      answer
+    } = req.body || {};
+
+    // Validate input
+    if (
+      typeof teamId !== "string" ||
+      typeof questionId !== "string" ||
+      typeof answer !== "string" ||
+      !teamId.trim() ||
+      !questionId.trim() ||
+      !answer.trim()
+    ) {
+      throw new HttpError(
+        400,
+        "Team ID, Question ID and answer are required."
       );
     }
 
-    // Check for an existing submission
-    const existingSubmission =
-      await transaction.get(submissionRef);
+    const cleanTeamId = teamId.trim();
+    const cleanQuestionId = questionId.trim();
 
-    if (existingSubmission.exists) {
-      throw new HttpsError(
-        "already-exists",
-        "You have already submitted this question."
+    // Find question
+    const question = QUESTIONS.find(
+      (item) => item.id === cleanQuestionId
+    );
+
+    if (!question) {
+      throw new HttpError(
+        404,
+        "Question does not exist."
       );
     }
 
-    // Save submission
-    transaction.set(submissionRef, {
-      teamId: cleanTeamId,
-      teamName: teamData.teamName,
-      roundId: ROUND_ID,
-      questionId: cleanQuestionId,
-      submittedAnswer: answer.trim(),
-      isCorrect,
-      pointsAwarded,
-      submittedAt: FieldValue.serverTimestamp()
+    // Check answer
+    const isCorrect =
+      normalizeAnswer(answer) ===
+      normalizeAnswer(question.answer);
+
+    const pointsAwarded = isCorrect
+      ? question.points
+      : 0;
+
+    const teamRef = db
+      .collection("teams")
+      .doc(cleanTeamId);
+
+    const submissionRef = db
+      .collection("submissions")
+      .doc(
+        `${cleanTeamId}_${cleanQuestionId}`
+      );
+
+    // Transaction
+    const result = await db.runTransaction(
+      async (transaction) => {
+        const teamSnapshot =
+          await transaction.get(teamRef);
+
+        if (!teamSnapshot.exists) {
+          throw new HttpError(
+            404,
+            "Team does not exist."
+          );
+        }
+
+        const teamData = teamSnapshot.data();
+
+        // Check assigned question
+        const assignedQuestion =
+          (teamData.assignedQuestions || []).find(
+            (item) => item.id === cleanQuestionId
+          );
+
+        if (!assignedQuestion) {
+          throw new HttpError(
+            403,
+            "This question was not assigned to your team."
+          );
+        }
+
+        // Check previous submission
+        const existingSubmission =
+          await transaction.get(submissionRef);
+
+        if (existingSubmission.exists) {
+          throw new HttpError(
+            409,
+            "You have already submitted this question."
+          );
+        }
+
+        // Save submission
+        transaction.set(submissionRef, {
+          teamId: cleanTeamId,
+          teamName: teamData.teamName,
+          roundId: ROUND_ID,
+          questionId: cleanQuestionId,
+          submittedAnswer: answer.trim(),
+          isCorrect,
+          pointsAwarded,
+          submittedAt: FieldValue.serverTimestamp()
+        });
+
+        // Update total points
+        transaction.update(teamRef, {
+          totalPoints:
+            FieldValue.increment(pointsAwarded)
+        });
+
+        return {
+          isCorrect,
+          pointsAwarded
+        };
+      }
+    );
+
+    return res.json({
+      success: true,
+      isCorrect: result.isCorrect,
+      pointsAwarded: result.pointsAwarded,
+      message: result.isCorrect
+        ? `Correct! You earned ${result.pointsAwarded} points.`
+        : "Incorrect. You earned 0 points."
+    });
+  })
+);
+
+// --------------------------------------------------
+// ADMIN RESULTS
+// --------------------------------------------------
+
+app.post(
+  "/getAdminResults",
+  asyncRoute(async (req, res) => {
+    const {
+      teamId,
+      teamName
+    } = req.body || {};
+
+    // Admin validation
+    if (
+      typeof teamId !== "string" ||
+      typeof teamName !== "string" ||
+      teamId.trim().toLowerCase() !== "admin" ||
+      teamName.trim().toLowerCase() !== "admin"
+    ) {
+      throw new HttpError(
+        403,
+        "Admin access denied."
+      );
+    }
+
+    // Fetch teams and submissions
+    const [
+      teamsSnapshot,
+      submissionsSnapshot
+    ] = await Promise.all([
+      db.collection("teams").get(),
+      db.collection("submissions").get()
+    ]);
+
+    const submissions =
+      submissionsSnapshot.docs.map(
+        (doc) => doc.data()
+      );
+
+    // Prepare team results
+    const teams = teamsSnapshot.docs.map((doc) => {
+      const team = doc.data();
+
+      const teamSubmissions = submissions.filter(
+        (submission) =>
+          submission.teamId === team.teamId
+      );
+
+      return {
+        teamId: team.teamId,
+        teamName: team.teamName,
+
+        assignedQuestions:
+          (team.assignedQuestions || []).map(
+            publicQuestion
+          ),
+
+        submissions: teamSubmissions,
+
+        totalPoints: team.totalPoints || 0,
+
+        registeredAt: team.registeredAt,
+        loginAt: team.loginAt,
+        logoutAt: team.logoutAt
+      };
     });
 
-    // Update total team points
-    transaction.update(teamRef, {
-      totalPoints: FieldValue.increment(pointsAwarded)
+    return res.json({
+      success: true,
+      teams
     });
+  })
+);
 
-    return {
-      isCorrect,
-      pointsAwarded
-    };
+// --------------------------------------------------
+// 404 ROUTE
+// --------------------------------------------------
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found."
   });
-
-  return {
-    success: true,
-    isCorrect: result.isCorrect,
-    pointsAwarded: result.pointsAwarded,
-    message: result.isCorrect
-      ? "Correct! You earned 5 points."
-      : "Incorrect. You earned 0 points."
-  };
 });
 
+// --------------------------------------------------
+// ERROR HANDLER
+// --------------------------------------------------
 
- // Admin: Get all team results
+app.use((err, req, res, next) => {
+  console.error(err);
 
-exports.getAdminResults = onCall(async (request) => {
+  const status = Number.isInteger(err.status)
+    ? err.status
+    : 500;
 
-  const { teamId, teamName } = request.data || {};
+  res.status(status).json({
+    success: false,
+    message:
+      status === 500
+        ? "Internal server error."
+        : err.message
+  });
+});
 
-  // Admin login validation
-  if (
-    typeof teamId !== "string" ||
-    typeof teamName !== "string" ||
-    teamId.trim().toLowerCase() !== "admin" ||
-    teamName.trim().toLowerCase() !== "admin"
-  ) {
-    throw new HttpsError(
-      "permission-denied",
-      "Admin access denied."
-    );
-  }
+// --------------------------------------------------
+// START SERVER
+// --------------------------------------------------
 
-  // Get all teams
-  const teamsSnapshot = await db
-    .collection("teams")
-    .get();
-
-  // Get all submissions
-  const submissionsSnapshot = await db
-    .collection("submissions")
-    .get();
-
-  const submissions = submissionsSnapshot.docs.map(
-    (doc) => doc.data()
+app.listen(PORT, () => {
+  console.log(
+    `Backend running on port ${PORT}`
   );
-
-  const teams = teamsSnapshot.docs.map((doc) => {
-
-    const team = doc.data();
-
-    const teamSubmissions = submissions.filter(
-      (submission) =>
-        submission.teamId === team.teamId
-    );
-
-    return {
-      teamId: team.teamId,
-      teamName: team.teamName,
-
-      assignedQuestions: team.assignedQuestions.map(
-        (question) => ({
-          id: question.id,
-          image: question.image,
-          points: question.points
-        })
-      ),
-
-      submissions: teamSubmissions,
-
-      totalPoints: team.totalPoints || 0,
-
-      registeredAt: team.registeredAt,
-      loginAt: team.loginAt,
-      logoutAt: team.logoutAt
-    };
-  });
-
-  return {
-    success: true,
-    teams
-  };
 });
-
