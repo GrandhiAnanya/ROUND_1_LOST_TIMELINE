@@ -298,29 +298,46 @@ input:disabled{background:#0f2a2a;color:var(--mint);box-shadow:inset 0 0 0 2px r
  */
 const API_BASE_URL = "https://chrono-explorers-round1-backend.onrender.com";
 
+/* Correct decoding tools (per the Round 1 answer key): Photopea for Q2-Q5 & Q7, StegOnline for the rest */
+const PHOTOPEA="https://www.photopea.com/", STEGONLINE="https://georgeom.net/StegOnline/upload";
 const ARTIFACT_META = {
-  Q01:{title:"Dancing Girl of Mohenjo-daro",description:"A bronze relic from the Indus Valley carries a hidden signal.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q02:{title:"The Sealed Doorway",description:"An ancient threshold conceals a message beyond its visible surface.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q03:{title:"The Night Sky of Giza",description:"Read the signal hidden in an ancient celestial record.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q04:{title:"The Narrow Pillar",description:"Inspect the artifact closely; the clue may be hidden in its structure.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q05:{title:"The Papyrus of One Pigment",description:"A single-pigment manuscript carries more than meets the eye.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q06:{title:"Pashupati Seal",description:"Decode the marks left by an ancient civilization.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q07:{title:"The Sun Disc of Ra",description:"A solar symbol may reveal a concealed transmission.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q08:{title:"The Clay Tablet of Nippur",description:"An ancient tablet contains a message waiting to be extracted.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q09:{title:"The Fields of Aaru",description:"Follow the clues encoded within this artifact.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q10:{title:"Brihadisvara Temple Capstone",description:"Examine the architectural relic for its hidden signal.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q11:{title:"Nataraja's Ring of Cosmic Fire",description:"A cosmic dance surrounds a message hidden in plain sight.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q12:{title:"Mahabalipuram Carvings",description:"Ancient stonework conceals a transmission from the past.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q13:{title:"Modhera Sun Temple Stepwell",description:"Trace the geometry and uncover the message.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q14:{title:"Hampi Stone Chariot",description:"Inspect the historic chariot for an encoded clue.",decodingUrl:"https://stylesuxx.github.io/steganography/"},
-  Q15:{title:"Chrono-Core Relic Casket",description:"The final relic holds a crucial signal for the Chrono-Core.",decodingUrl:"https://stylesuxx.github.io/steganography/"}
+  Q01:{title:"Dancing Girl of Mohenjo-daro",description:"A bronze relic from the Indus Valley carries a hidden signal.",decodingUrl:STEGONLINE},
+  Q02:{title:"The Sealed Doorway",description:"An ancient threshold conceals a message beyond its visible surface.",decodingUrl:PHOTOPEA},
+  Q03:{title:"The Night Sky of Giza",description:"Read the signal hidden in an ancient celestial record.",decodingUrl:PHOTOPEA},
+  Q04:{title:"The Narrow Pillar",description:"Inspect the artifact closely; the clue may be hidden in its structure.",decodingUrl:PHOTOPEA},
+  Q05:{title:"The Papyrus of One Pigment",description:"A single-pigment manuscript carries more than meets the eye.",decodingUrl:PHOTOPEA},
+  Q06:{title:"Pashupati Seal",description:"Decode the marks left by an ancient civilization.",decodingUrl:STEGONLINE},
+  Q07:{title:"The Sun Disc of Ra",description:"A solar symbol may reveal a concealed transmission.",decodingUrl:PHOTOPEA},
+  Q08:{title:"The Clay Tablet of Nippur",description:"An ancient tablet contains a message waiting to be extracted.",decodingUrl:STEGONLINE},
+  Q09:{title:"The Fields of Aaru",description:"Follow the clues encoded within this artifact.",decodingUrl:STEGONLINE},
+  Q10:{title:"Brihadisvara Temple Capstone",description:"Examine the architectural relic for its hidden signal.",decodingUrl:STEGONLINE},
+  Q11:{title:"Nataraja's Ring of Cosmic Fire",description:"A cosmic dance surrounds a message hidden in plain sight.",decodingUrl:STEGONLINE},
+  Q12:{title:"Mahabalipuram Carvings",description:"Ancient stonework conceals a transmission from the past.",decodingUrl:STEGONLINE},
+  Q13:{title:"Modhera Sun Temple Stepwell",description:"Trace the geometry and uncover the message.",decodingUrl:STEGONLINE},
+  Q14:{title:"Hampi Stone Chariot",description:"Inspect the historic chariot for an encoded clue.",decodingUrl:STEGONLINE},
+  Q15:{title:"Chrono-Core Relic Casket",description:"The final relic holds a crucial signal for the Chrono-Core.",decodingUrl:STEGONLINE}
 };
+/* Exact picture file for every artifact (files live in the Pictures/ folder next to this page) */
+const IMAGE_FILES = {Q01:"R1_Q01.jpg",Q02:"R1_Q02.png",Q03:"R1_Q03.png",Q04:"R1_Q04.png",Q05:"R1_Q05.png",Q06:"R1_Q06.png",Q07:"R1_Q07.png",Q08:"R1_Q08.png",Q09:"R1_Q09.png",Q10:"R1_Q10.png",Q11:"R1_Q11.png",Q12:"R1_Q12.png",Q13:"R1_Q13.png",Q14:"R1_Q14.png",Q15:"R1_Q15.png"};
+/* Answers are stored only as salted hashes (never in plain text). Mission Control (backend) stays the final judge. */
+const ANSWER_HASH = {Q01:"1hovsirceot",Q02:"1fko34h3nvy",Q03:"23z2wv0kdof",Q04:"324a6eyhkj",Q05:"26g9rgiajfw",Q06:"dadt4ufwa8",Q07:"xj9otn9xqh",Q08:"1bp9jsv79fu",Q09:"1rbfkics5qm",Q10:"1eg29urm26i",Q11:"qu5ivbxzyg",Q12:"1r5xa2m8ds3",Q13:"xw1fy1fdou",Q14:"8wxjlbz7xo",Q15:"22sx0c872ai"};
+const ALL_IDS = Object.keys(ARTIFACT_META), PER_TEAM = 3;
+function hashStr(s){let h1=0xdeadbeef,h2=0x41c6ce57;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1=Math.imul(h1^c,2654435761);h2=Math.imul(h2^c,1597334677)}h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);return (4294967296*(2097151&h2)+(h1>>>0)).toString(36)}
+const normAnswer=v=>String(v??"").trim().toUpperCase().replace(/[\s-]+/g,"_");
+const isCorrectLocal=(id,a)=>ANSWER_HASH[id]===hashStr("CHRONO|"+id+"|"+normAnswer(a));
+/* random-but-stable pick of 3 different artifacts for a team (same team = same three, on any device) */
+function pickThree(teamId){
+  let seed=parseInt(hashStr("R1|"+String(teamId).trim().toLowerCase()).slice(0,6),36)||1;
+  const rnd=()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+  const pool=[...ALL_IDS];for(let i=pool.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]]}
+  return pool.slice(0,PER_TEAM);
+}
 const ARTIFACT_ICON = {Q01:"💃",Q02:"🚪",Q03:"🌌",Q04:"🗿",Q05:"📜",Q06:"🐂",Q07:"☀️",Q08:"🧱",Q09:"🌾",Q10:"🛕",Q11:"🔥",Q12:"🪨",Q13:"💧",Q14:"🛞",Q15:"📦"};
 const ACCENTS = ["#22d3ee","#f472b6","#fbbf24","#a78bfa","#34d399","#fb923c"];
 const SPARK_COLORS = ["#22d3ee","#f472b6","#fbbf24","#a78bfa","#34d399"];
 
 const $ = (id) => document.getElementById(id);
-let currentTeam = null, assigned = [], solved = new Set(), busy = false, currentPoints = 0, clockTimer = null;
+let currentTeam = null, assigned = [], solved = new Set(), attempted = new Set(), busy = false, currentPoints = 0, clockTimer = null, teamState = null;
 const configured = () => API_BASE_URL.startsWith("http") && !API_BASE_URL.includes("YOUR-BACKEND-URL");
 
 function showToast(message){const t=$("toast");t.textContent=message;t.classList.remove("hidden");clearTimeout(showToast._t);showToast._t=setTimeout(()=>t.classList.add("hidden"),3500)}
@@ -338,15 +355,24 @@ function sparks(n=60){
   }
 }
 
-/* mission clock */
+/* per-team saved progress (survives refresh / closing the tab / logout) */
+const stKey=id=>"chronoState:"+String(id).trim().toLowerCase();
+function loadState(id){try{return JSON.parse(localStorage.getItem(stKey(id))||"null")||{}}catch{return {}}}
+function saveState(){if(!currentTeam)return;teamState.solved=[...solved];teamState.attempted=[...attempted];teamState.points=currentPoints;teamState.assigned=assigned.map(q=>q.questionId);try{localStorage.setItem(stKey(currentTeam.teamId),JSON.stringify(teamState))}catch{}}
+
+/* mission clock: starts once per team at first login, keeps running across refreshes/logouts, freezes when all 3 artifacts are answered */
+const fmt=ms=>{const s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600),m=String(Math.floor(s%3600/60)).padStart(2,"0"),sec=String(s%60).padStart(2,"0");return (h?h+":":"")+m+":"+sec};
+const elapsedSeconds=()=>teamState&&teamState.startedAt?Math.max(0,Math.floor(((teamState.finishedAt||Date.now())-teamState.startedAt)/1000)):0;
 function startClock(){
-  let start=Number(sessionStorage.getItem("chronoStart"));
-  if(!start){start=Date.now();sessionStorage.setItem("chronoStart",String(start))}
   $("clockChip").classList.remove("hidden");clearInterval(clockTimer);
-  const tick=()=>{const s=Math.max(0,Math.floor((Date.now()-start)/1000)),h=Math.floor(s/3600),m=String(Math.floor(s%3600/60)).padStart(2,"0"),sec=String(s%60).padStart(2,"0");$("elapsed").textContent=(h?h+":":"")+m+":"+sec};
-  tick();clockTimer=setInterval(tick,1000);
+  const tick=()=>{$("elapsed").textContent=fmt((teamState.finishedAt||Date.now())-teamState.startedAt)};
+  tick();if(!teamState.finishedAt)clockTimer=setInterval(tick,1000);
 }
-function stopClock(){clearInterval(clockTimer);$("clockChip").classList.add("hidden");sessionStorage.removeItem("chronoStart")}
+function stopClock(){clearInterval(clockTimer);$("clockChip").classList.add("hidden")}
+function checkFinished(){
+  if(!assigned.length||teamState.finishedAt)return;
+  if(assigned.every(q=>attempted.has(q.questionId)||solved.has(q.questionId))){teamState.finishedAt=Date.now();clearInterval(clockTimer);$("elapsed").textContent=fmt(teamState.finishedAt-teamState.startedAt);saveState()}
+}
 
 async function apiPost(route,payload){
   if(!configured()) throw new Error("Set API_BASE_URL in index.html to the deployed Express backend URL first.");
@@ -360,8 +386,8 @@ async function apiPost(route,payload){
 function normalizeQuestion(q){
   const id=String(q.questionId||q.question_id||q.id||"").toUpperCase();
   const meta=ARTIFACT_META[id]||{};
-  const filename=q.imageFilename||q.image_filename||q.image||`${id}.png`;
-  return {...meta,...q,questionId:id,imageFilename:filename,title:q.title||q.artifactName||meta.title||`Artifact ${id}`,description:q.description||q.hint||meta.description||"Inspect the artifact to uncover its hidden transmission.",decodingUrl:q.decodingUrl||q.decoding_url||meta.decodingUrl||"",points:Number(q.points??q.pointsAvailable??5)};
+  const filename=IMAGE_FILES[id]||q.imageFilename||q.image_filename||q.image||`${id}.png`;
+  return {...meta,...q,questionId:id,imageFilename:filename,title:q.title||q.artifactName||meta.title||`Artifact ${id}`,description:q.description||q.hint||meta.description||"Inspect the artifact to uncover its hidden transmission.",decodingUrl:meta.decodingUrl||q.decodingUrl||q.decoding_url||"",points:Number(q.points??q.pointsAvailable??5)};
 }
 function saveSession(){sessionStorage.setItem("chronoTeam",JSON.stringify({teamId:currentTeam.teamId,teamName:currentTeam.teamName}))}
 function setScore(v,animate){currentPoints=v;$("score").textContent=v;if(animate){const c=$("scoreChip");c.classList.remove("bump");void c.offsetWidth;c.classList.add("bump")}}
@@ -369,18 +395,29 @@ function showMission(team,data){
   currentTeam={teamId:String(team.teamId||team.team_id),teamName:team.teamName||team.team_name};
   saveSession();$("navTeam").textContent=currentTeam.teamId;$("teamChip").classList.remove("hidden");
   $("loginView").classList.add("hidden");$("missionView").classList.remove("hidden");
-  assigned=(data.assignedQuestions||data.assigned_questions||data.questions||[]).map(normalizeQuestion);
-  solved=new Set(data.solvedQuestionIds||data.solved_question_ids||[]);
-  setScore(Number(data.totalPoints??data.total_points??0));
-  startClock();renderQuestions();updateProgress();
+  teamState=loadState(currentTeam.teamId);
+  /* exactly 3 artifacts per team: backend assignment if valid, else the one saved earlier, else a random-but-stable pick */
+  const seen=new Set(),fromApi=(data.assignedQuestions||data.assigned_questions||data.questions||[]).map(normalizeQuestion).filter(q=>ARTIFACT_META[q.questionId]&&!seen.has(q.questionId)&&seen.add(q.questionId));
+  if(fromApi.length===PER_TEAM)assigned=fromApi;
+  else{const ids=(Array.isArray(teamState.assigned)&&teamState.assigned.length===PER_TEAM&&teamState.assigned.every(i=>ARTIFACT_META[i]))?teamState.assigned:pickThree(currentTeam.teamId);assigned=ids.map(id=>normalizeQuestion({questionId:id}))}
+  solved=new Set([...(data.solvedQuestionIds||data.solved_question_ids||[]),...(teamState.solved||[])].map(x=>String(x).toUpperCase()).filter(i=>assigned.some(q=>q.questionId===i)));
+  attempted=new Set([...(data.attemptedQuestionIds||data.attempted_question_ids||data.answeredQuestionIds||[]),...(teamState.attempted||[]),...solved].map(x=>String(x).toUpperCase()).filter(i=>assigned.some(q=>q.questionId===i)));
+  const apiPts=Number(data.totalPoints??data.total_points??0)||0;
+  setScore(Math.max(apiPts,Number(teamState.points)||0));
+  /* clock start: earliest of backend registration time and the saved local start */
+  const srv=Date.parse(data.startedAt||data.startTime||data.start_time||data.registeredAt||data.registered_at||data.createdAt||data.created_at||"");
+  const local=Number(teamState.startedAt)||0;
+  teamState.startedAt=[srv,local].filter(n=>n>0).reduce((a,b)=>Math.min(a,b),Infinity);
+  if(!isFinite(teamState.startedAt))teamState.startedAt=Date.now();
+  saveState();startClock();checkFinished();renderQuestions();updateProgress();
 }
 function renderQuestions(){
   const grid=$("questionGrid");grid.innerHTML="";
   if(!assigned.length){grid.innerHTML='<div class="panel"><div class="eyebrow">No assignment found</div><p>Mission Control did not return assigned artifacts. Contact an organizer.</p></div>';return}
   assigned.forEach((q,index)=>{
-    const id=q.questionId,done=solved.has(id);
+    const id=q.questionId,done=solved.has(id),rec=!done&&attempted.has(id);
     const icon=ARTIFACT_ICON[id]||"🏺";
-    const imagePath=`assets/${q.imageFilename}`;
+    const imagePath=`Pictures/${q.imageFilename}`;
     const card=document.createElement("article");card.className="question-card"+(done?" locked":"");
     card.style.setProperty("--accent",ACCENTS[index%ACCENTS.length]);card.style.animationDelay=(index*.12)+"s";
     card.innerHTML=`
@@ -388,7 +425,7 @@ function renderQuestions(){
       <div class="image-stage"><span class="corner-emoji">${icon}</span><img src="${escapeHtml(imagePath)}" alt="${escapeHtml(q.title)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.classList.remove('hidden')"><span class="image-placeholder hidden">${icon}</span><span class="corner-rune">SIGNAL ${String(index+1).padStart(2,"0")} ◈</span></div>
       <div class="card-body"><h3 class="artifact-title">${escapeHtml(q.title)}</h3><p class="artifact-description">${escapeHtml(q.description)}</p>
         <div class="card-actions"><a class="btn btn-secondary" href="${escapeHtml(imagePath)}" download="${escapeHtml(q.imageFilename)}">⬇️ Download</a><a class="btn btn-secondary" href="${escapeHtml(q.decodingUrl||'#')}" ${q.decodingUrl?'target="_blank" rel="noopener noreferrer"':'aria-disabled="true"'}>🔍 Decode tool</a></div>
-        <form class="answer-form" data-id="${escapeHtml(id)}"><label class="field" style="margin:0"><span class="eyebrow">Hidden message · ${q.points} pts</span><input name="answer" placeholder="${done?'Transmission secured':'Enter the decoded answer'}" autocomplete="off" required ${done?'disabled':''} aria-label="Answer for ${escapeHtml(q.title)}"></label><button class="btn ${done?'btn-secondary':'btn-primary'}" type="submit" ${done?'disabled':''}>${done?'✅ SECURED':'SUBMIT ANSWER →'}</button><div class="feedback ${done?'good':''}" id="feedback-${id}" role="status">${done?'Transmission verified. Points secured.':''}</div></form>
+        <form class="answer-form" data-id="${escapeHtml(id)}"><label class="field" style="margin:0"><span class="eyebrow">Hidden message · ${q.points} pts</span><input name="answer" placeholder="${done?'Transmission secured':rec?'Signal recorded':'Enter the decoded answer'}" autocomplete="off" required ${done||rec?'disabled':''} aria-label="Answer for ${escapeHtml(q.title)}"></label><button class="btn ${done||rec?'btn-secondary':'btn-primary'}" type="submit" ${done||rec?'disabled':''}>${done?'✅ SECURED':rec?'SIGNAL RECORDED':'SUBMIT ANSWER →'}</button><div class="feedback ${done?'good':rec?'bad':''}" id="feedback-${id}" role="status">${done?'Transmission verified. Points secured.':rec?'Signal unverified · 0 points.':''}</div></form>
       </div>`;
     grid.appendChild(card);card.querySelector("form").addEventListener("submit",e=>handleAnswer(e,id,card.querySelector("form")));
   });
@@ -402,29 +439,43 @@ function updateProgress(){
     $("completionPanel").classList.remove("hidden");
   } else $("completionPanel").classList.add("hidden");
 }
+function lockWrong(id,form,msg){
+  const input=form.elements.answer,button=form.querySelector("button"),feedback=$(`feedback-${id}`);
+  attempted.add(id);input.disabled=true;button.disabled=true;button.textContent="SIGNAL RECORDED";
+  feedback.textContent=msg;feedback.className="feedback bad";
+}
 async function handleAnswer(event,questionId,form){
-  event.preventDefault();if(busy||solved.has(questionId))return;
+  event.preventDefault();if(busy||solved.has(questionId)||attempted.has(questionId))return;
   const input=form.elements.answer,button=form.querySelector("button"),feedback=$(`feedback-${questionId}`);
-  const answer=input.value.trim();if(!answer){feedback.textContent="Enter a decoded transmission first.";feedback.className="feedback bad";return}
+  const answer=normAnswer(input.value);if(!answer){feedback.textContent="Enter a decoded transmission first.";feedback.className="feedback bad";return}
+  const localOk=isCorrectLocal(questionId,answer);
+  const q=assigned.find(x=>x.questionId===questionId);
   busy=true;setBusy(button,true,"VERIFYING SIGNAL…");feedback.textContent="Sending transmission through the portal…";feedback.className="feedback";
   try{
-    const result=await apiPost("submitAnswer",{teamId:currentTeam.teamId,questionId,answer});
-    const correct=Boolean(result.isCorrect??result.is_correct??result.correct);
-    const awarded=Number(result.pointsAwarded??result.points_awarded??0);
-    if(correct){
-      solved.add(questionId);setScore(currentPoints+awarded,true);
+    const secs=elapsedSeconds();
+    const result=await apiPost("submitAnswer",{teamId:currentTeam.teamId,questionId,answer,timeTakenSeconds:secs,elapsedSeconds:secs,submittedAt:new Date().toISOString()});
+    const serverOk=Boolean(result.isCorrect??result.is_correct??result.correct);
+    if(localOk&&serverOk){
+      /* only an answer that matches the key AND is confirmed by the database backend earns points */
+      const awarded=Number(result.pointsAwarded??result.points_awarded??(q?q.points:5))||0;
+      solved.add(questionId);attempted.add(questionId);
+      const total=Number(result.totalPoints??result.total_points);
+      setScore(Number.isFinite(total)?Math.max(total,currentPoints):currentPoints+awarded,true);
       input.disabled=true;button.disabled=true;button.textContent="✅ SECURED";
       $(`state-${questionId}`).textContent="✓ Decrypted";
       feedback.textContent=result.message||`✦ Transmission decoded · +${awarded} points`;feedback.className="feedback good";
-      form.closest(".question-card").classList.add("locked");sparks(40);updateProgress();showToast("✦ Signal verified. Points added to your mission record.");
+      form.closest(".question-card").classList.add("locked");sparks(40);showToast("✦ Signal verified. Points added to your mission record.");
+    }else if(localOk&&!serverOk){
+      lockWrong(questionId,form,"Mission Control could not confirm this answer · 0 points. Tell an organizer.");
     }else{
-      feedback.textContent=result.message||"Signal unverified · 0 points. Study the artifact more closely.";feedback.className="feedback bad";
-      // The backend records incorrect submissions and permits only one attempt per question.
-      input.disabled=true;button.disabled=true;button.textContent="SIGNAL RECORDED";
+      lockWrong(questionId,form,(!serverOk&&result.message)||"Signal unverified · 0 points. Study the artifact more closely.");
     }
+    checkFinished();saveState();updateProgress();
   }catch(error){
-    feedback.textContent=error.message||"Mission Control could not verify the answer. Check your connection and retry.";feedback.className="feedback bad";
-  }finally{busy=false;if(!solved.has(questionId)&&!form.elements.answer.disabled)setBusy(button,false,"SUBMIT ANSWER →")}
+    const msg=error.message||"";
+    if(/already/i.test(msg)){lockWrong(questionId,form,msg);checkFinished();saveState();updateProgress()}
+    else{feedback.textContent=msg||"Mission Control could not verify the answer. Check your connection and retry.";feedback.className="feedback bad"}
+  }finally{busy=false;if(!solved.has(questionId)&&!attempted.has(questionId))setBusy(button,false,"SUBMIT ANSWER →")}
 }
 $("loginForm").addEventListener("submit",async event=>{
   event.preventDefault();const teamId=$("teamId").value.trim(),teamName=$("teamName").value.trim(),btn=$("loginBtn");
@@ -444,22 +495,17 @@ $("logoutBtn").addEventListener("click",async()=>{
   if(!currentTeam)return;
   if(!confirm("Close the portal? Your assignment and recorded answers will remain in the event database."))return;
   try{await apiPost("logoutTeam",{teamId:currentTeam.teamId})}catch(e){showToast("Session ended locally, but the backend logout could not be recorded: "+e.message)}
-  sessionStorage.removeItem("chronoTeam");stopClock();currentTeam=null;assigned=[];solved.clear();setScore(0);
+  saveState();sessionStorage.removeItem("chronoTeam");stopClock();currentTeam=null;teamState=null;assigned=[];solved.clear();attempted.clear();setScore(0);
   $("missionView").classList.add("hidden");$("loginView").classList.remove("hidden");$("teamChip").classList.add("hidden");$("questionGrid").innerHTML="";$("completionPanel").classList.add("hidden");
 });
 async function restoreSession(){
   let stored;try{stored=JSON.parse(sessionStorage.getItem("chronoTeam")||"null")}catch{return}
   if(!stored)return;
   $("teamId").value=stored.teamId;$("teamName").value=stored.teamName;
-  // The current API has no team-status route. Re-registering restores the fixed assignment,
-  // but solved-state and existing score need a backend status endpoint.
   if(!configured())return;
   try{
     const data=await apiPost("registerTeam",{teamId:stored.teamId,teamName:stored.teamName});
     showMission(stored,data);
-    if(!data.totalPoints && data.assignedQuestions?.length) {
-      showToast("Assignment restored. Ask the organizer to add a team-status route to restore saved points and solved questions after refresh.");
-    }
   }catch(error){console.warn("Could not restore saved team session:",error)}
 }
 restoreSession();
